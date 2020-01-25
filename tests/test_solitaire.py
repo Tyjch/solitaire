@@ -92,16 +92,49 @@ class TestDeck:
         print(deck.deal(3))
 
 
+class TestTableau:
+
+    seed = 2
+
+    def test_tableau(self):
+        deck = Deck(hidden=False, seed=self.seed)
+        deck.shuffle()
+        print(deck)
+
+        cards   = deck.deal(8)
+        tableau = Tableau(cards, kind='tableau')
+        actions = tableau.get_candidates()
+
+        print()
+        print('TABLEAU')
+        print('Card:', tableau.cards[-1])
+        print('Actions:', actions)
+        print()
+
+    def test_foundation(self):
+        deck = Deck(hidden=False, seed=self.seed)
+        deck.shuffle()
+        cards = deck.deal(8)
+        tableau = Tableau(cards, kind='foundation')
+        actions = tableau.get_candidates()
+
+        print()
+        print('FOUNDATION')
+        print('Card:', tableau.cards[-1])
+        print('Actions:', actions)
+        print()
+
+
 class TestGame:
 
-    def test_game(self):
+    def test_rebuild(self):
         game = Game()
-        game.deck.cards = game.deck.cards[:-1]
+        saved_deck = game.deck.cards[:]
 
-        print()
-        print()
-        for i in range(100):
-            print( f'Round: {i}', '==' * 50)
+        print(); print()
+        for i in range(9):
+            print( f'Round: {i}', '==' * 100)
             game.render()
             game.draw()
-            game.get_actions()
+
+        assert saved_deck == game.deck.cards

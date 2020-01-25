@@ -2,6 +2,7 @@ import random, itertools
 from unicards import unicard
 from pprint import pprint
 
+MODE   = 'text'
 RANKS  = ('A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K')
 SUITS  = ('s', 'h', 'c', 'd')
 COLORS = {
@@ -11,8 +12,7 @@ COLORS = {
     'd': 'RED'
 }
 BLACK_SUITS = ('s', 'c')
-RED_SUITS = ('h', 'd')
-MODE   = 'text'
+RED_SUITS   = ('h', 'd')
 
 
 class Card:
@@ -96,19 +96,21 @@ class Tableau:
 
         candidates = []
         for suit in child_suits:
-            candidates.append(Card(suit, rank=child_rank))
+            candidates.append((card, Card(suit, rank=child_rank)))
         return candidates
 
     def _get_foundation_candidates(self):
         card = self.cards[-1]
 
         if card.rank is None:
-            return [Card(card.suit, rank='2')]
+            return [(card, Card(card.suit, rank='A'))]
+        elif card.rank == 'K':
+            return []
 
         rank_index = RANKS.index(card.rank)
         child_rank = RANKS[rank_index + 1]
 
-        return [Card(card.suit, rank=child_rank)]
+        return [(card, Card(card.suit, rank=child_rank))]
 
 
 class Deck:
@@ -173,12 +175,18 @@ class Game:
         pprint(self.tableaus)
         print()
 
+        '''
         print('PLAYABLE CARDS')
         print(self.playable_cards())
         print()
 
         print('CANDIDATES')
         print(self.get_candidates())
+        print()
+        '''
+
+        print('ACTIONS')
+        print(self.get_actions())
         print()
 
     def draw(self):
@@ -191,47 +199,48 @@ class Game:
 
     def rebuild(self):
         # TODO: Clean up
-        print('ORIGINAL DECK:')
-        print('[Q♦, J♥, 4♠, 5♦, T♠, 9♦, 7♠, 2♦, 6♥, 9♠, 8♦, A♥, Q♣, T♥, 5♣, 7♥, K♥, 6♣, 7♣, 4♥, 3♠, A♣, T♦]')
+        #print('ORIGINAL DECK:')
+        #print('[Q♦, J♥, 4♠, 5♦, T♠, 9♦, 7♠, 2♦, 6♥, 9♠, 8♦, A♥, Q♣, T♥, 5♣, 7♥, K♥, 6♣, 7♣, 4♥, 3♠, A♣, T♦]')
 
-        print('WASTE:')
-        print(self.waste)
+        #print('WASTE:')
+        #print(self.waste)
 
-        print('REVERSED WASTE:')
+        #print('REVERSED WASTE:')
         reversed_waste = list(reversed(self.waste))
-        print(reversed_waste)
+        #print(reversed_waste)
 
-        print('GROUPS:')
+        #print('GROUPS:')
         groups = [list(reversed_waste[i:i+3]) for i in range(0, len(reversed_waste), 3)]
-        print(groups)
+        #print(groups)
 
-        print('REVERSED GROUPS:')
+        #print('REVERSED GROUPS:')
         reversed_groups = [list(reversed(group)) for group in groups]
-        print(reversed_groups)
+        #print(reversed_groups)
 
-        print('FINAL LIST:')
+        #print('FINAL LIST:')
         final_list = list(itertools.chain.from_iterable(reversed_groups))
-        print(final_list)
+        #print(final_list)
 
         self.deck.cards = final_list
         self.waste = []
 
     def playable_cards(self):
         foundation_cards = []
+        tableau_cards    = []
+        waste_cards      = []
+
         for tableau in self.foundations:
             try:
                 foundation_cards.append(tableau.cards[-1])
             except IndexError:
                 continue
 
-        tableau_cards = []
         for tableau in self.tableaus:
             try:
                 tableau_cards.append(tableau.cards[-1])
             except IndexError:
                 continue
 
-        waste_cards = []
         try:
             waste_cards.append(self.waste[0])
         except IndexError:
@@ -249,17 +258,15 @@ class Game:
         return candidates
 
     def get_actions(self):
-        actions = set(self.playable_cards()) & set(self.get_candidates())
-        print(actions)
+        # Example actions: (3♣, 2♥), (3♣, 2♦), (8♠, 7♥)
+        pass
+        playable_cards    = self.playable_cards()
+        candidate_actions = self.get_candidates()
 
+        actions = []
+        for a in candidate_actions:
+            if (a[0] in playable_cards) and (a[1] in playable_cards):
+                actions.append(a)
 
-'''
-if __name__ == '__main__':
-    deck = Deck()#; print(deck)
-    deck.shuffle()#; print(deck)
-    #dealt_cards = deck.deal(3)#; print(dealt_cards); print(deck)
+        return actions
 
-    game = Game()
-    print(game.foundations)
-    pprint(game.tableaus)
-'''
