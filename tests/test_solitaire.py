@@ -1,7 +1,16 @@
 import pytest
 import random
-from solitaire import Card, Deck, Tableau, Game
+from solitaire import Card, Deck, Tableau, Game, ActionError
 from pprint import pprint
+
+annotations = {
+    0: '[(♦, A♦), (8♠, 7♦), (2♣, A♦)]',
+    1: '[(♦, A♦), (8♠, 7♦)]',
+    2: '[(♦, A♦)]',
+    3: '[(8♥, 7♠), (2♣, A♦)]',
+    4: '[(7♠, 6♦), (2♣, A♦)]',
+    38: '[(2♣, 3♣), (9♥, 8♠), (9♣, 8♥)]'
+}
 
 
 class TestCard:
@@ -124,6 +133,59 @@ class TestTableau:
         print('Actions:', actions)
         print()
 
+    def test_find_shown_card(self):
+        # [3♥, 4♣, T♠, 9♥, 5♠, 7♠, K♦, A♣]
+        deck = Deck(seed=self.seed)
+        deck.shuffle()
+        cards = deck.deal(8)
+        tableau = Tableau(cards)
+        tableau.cards[-1].hidden = False
+        tableau.cards[-2].hidden = False
+        card = Card('d', 'K')
+        location = tableau.find_card(card)
+
+        print()
+        print('TABLEAU:  ', tableau)
+        print('CARD:     ', card)
+        print('LOCATION: ', location)
+
+    def test_find_hidden_card(self):
+        deck = Deck(seed=self.seed)
+        deck.shuffle()
+        cards = deck.deal(8)
+        tableau = Tableau(cards)
+        tableau.cards[-1].hidden = False
+        tableau.cards[-2].hidden = False
+        card = Card('h', '9')
+
+        with pytest.raises(ValueError):
+            location = tableau.find_card(card)
+
+        print('\n')
+        print('TABLEAU:', tableau)
+        print('HIDDEN: ', '[3♥, 4♣, T♠, 9♥, 5♠, 7♠, K♦, A♣]')
+        print('CARD:   ', card)
+
+        print('ValueError raised: hidden card not found')
+
+    def test_split_on_shown_card(self):
+        # [3♥, 4♣, T♠, 9♥, 5♠, 7♠, K♦, A♣]
+        deck = Deck(seed=self.seed)
+        deck.shuffle()
+        cards = deck.deal(8)
+        tableau = Tableau(cards)
+        tableau.cards[-1].hidden = False
+        tableau.cards[-2].hidden = False
+        card = Card('d', 'K')
+
+        location = tableau.find_card(card)
+        split_cards = tableau.split(location)
+
+        print('\n')
+        print('LOCATION:', location)
+        print('TABLEAU:', tableau)
+        print('SPLIT CARDS:', split_cards)
+
 
 class TestGame:
 
@@ -131,10 +193,25 @@ class TestGame:
         game = Game()
         saved_deck = game.deck.cards[:]
 
-        print(); print()
-        for i in range(9):
-            print( f'Round: {i}', '==' * 100)
-            game.render()
-            game.draw()
+        print()
+        for i in range(1000):
+            if i > 1000:
+                print()
+                print( f'Round: {i}', '==' * 100)
+                game.render()
+            moves = game.get_moves()
+            try:
+                move = random.choice(moves)
+                try:
+                    game.move_cards(move)
+                    game.get_reward(move)
+                except ActionError:
+                    print('Action Error')
+                    continue
+                game.draw()
+            except (IndexError, ValueError):
+                game.draw()
+                print('No moves to choose from')
+                continue
 
-        assert saved_deck == game.deck.cards
+        game.render()
