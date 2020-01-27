@@ -1,5 +1,5 @@
 import pytest
-from solitaire2 import Deck
+from solitaire import Deck
 
 class TestDeck:
 

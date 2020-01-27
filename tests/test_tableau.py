@@ -2,7 +2,7 @@ import pytest
 from hypothesis import given
 import hypothesis.strategies as st
 
-from solitaire2 import Card, Tableau
+from solitaire import Card, Tableau
 
 valid_card   = Card(rank='T', suit='c', location='foundation')
 invalid_card = Card(rank='5', suit='s', location='foundation')

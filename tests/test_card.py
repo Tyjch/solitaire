@@ -2,7 +2,7 @@ import pytest
 from hypothesis import given
 import hypothesis.strategies as st
 
-from solitaire2 import SUITS, RANKS, LOCATIONS, Card
+from solitaire import SUITS, RANKS, LOCATIONS, Card
 
 
 class TestCard:

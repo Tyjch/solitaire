@@ -1,61 +1,96 @@
-import random, itertools
-from unicards import unicard
+from colors import color
 from pprint import pprint
-from colors import red, faint, color
+import random
 
-MODE   = 'text'
-RANKS  = ('A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K')
+GLYPHS = {'s': '\u2660', 'h': '\u2665', 'd': '\u2666', 'c': '\u2663'}
 SUITS  = ('s', 'h', 'c', 'd')
-COLORS = {
-    's': 'BLACK',
-    'h': 'RED',
-    'c': 'BLACK',
-    'd': 'RED'
-}
-BLACK_SUITS = ('s', 'c')
-RED_SUITS   = ('h', 'd')
+RANKS  = ('A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K')
+LOCATIONS = ('tableau', 'foundation', 'deck', 'waste')
 
 
-class ActionError(Exception):
-    pass
+def get_opposite_suits(suit: str):
+    if suit in ('s', 'c'):
+        return 'h', 'd'
+    elif suit in ('h', 'd'):
+        return 's', 'c'
+    else:
+        raise ValueError(f'{suit} is not in {SUITS}')
+
+def cards_product(ranks, suits):
+    cards = []
+    for s in suits:
+        for r in ranks:
+            cards.append(Card(r, s))
+    return cards
+
+def set_container(items, container):
+    for i in items:
+        i.container = container
+
+def get_parent_card(card):
+    print(card)
+    print(card.container)
+    print(card.container.cards)
+
+
 
 
 class Card:
 
-    foundations = {
-        's': '\u2660',
-        'h': '\u2665',
-        'd': '\u2666',
-        'c': '\u2663'
-    }
+    def __init__(self, rank: str = None, suit: str = None, location: str = 'deck', hidden: bool = False):
+        """
+        Parameters
+        ----------
+        rank : str, optional
+            Indicates the rank of the card as an uppercase character
+        suit : str, optional
+            Indicates the suit of the card as a lowercase character
+        hidden : bool, optional
+            Indicates the card is hidden, it cannot be a target or a source for a move
 
-    def __init__(self, suit, rank=None, hidden=False):
-        self.rank   = rank
-        self.suit   = suit
+        Notes
+        -----
+        `card = Card()` is a tableau card, it can only be a target. Only kings can be placed on it.
+        `card = Card(suit='h')` is a foundation card, it can only be a target. Only aces of the same suit can be placed on it.
+        """
+
+        # Validating `rank` argument
+        if (rank in RANKS) or (rank is None): self.rank = rank
+        else: raise ValueError(f'{rank} is not in {RANKS} or None')
+
+        # Validating `suit` argument
+        if (suit in SUITS) or (suit is None): self.suit = suit
+        else: raise ValueError(f'{suit} is not in {SUITS} or None')
+
+        # Validating `location` argument
+        if location in LOCATIONS:
+            self.location = location
+        else:
+            raise ValueError(f'{location} is not in {LOCATIONS}')
+
+        # Overwrite location if suit or empty card
+        if not self.suit and not self.rank:
+            self.location = 'tableau'
+        elif not self.rank:
+            self.location = 'foundation'
+
         self.hidden = hidden
-        self.color  = COLORS[self.suit]
-        
-    def __repr__(self):
-        if MODE == 'glyph':
-            if not self.rank:
-                return self.foundations[self.suit]
-            elif self.hidden:
-                return chr(int(f"0001F0A0", base=16))
-            else:
-                return unicard(f"{self.rank}{self.suit}", color=True)
-        elif MODE == 'text':
-            if not self.rank:
-                if self.color == 'RED':
-                    return red(f"{self.foundations[self.suit]}")
-                else:
-                    return color(f"{self.foundations[self.suit]}", 'darkgray')
-            elif self.hidden:
-                return chr(int(f"0001F0A0", base=16))
-            else:
-                if self.color == 'RED':
-                    return red(f"{self.rank}{self.foundations[self.suit]}")
-                else:
-                    return color(f"{self.rank}{self.foundations[self.suit]}", 'darkgray')
+        self.container = None
+
+        '''
+        # Ensuring that only normal cards can be hidden
+        if rank and suit: self.hidden = hidden
+        else: self.hidden = False
+        '''
+
+    def __hash__(self):
+        """
+        Returns
+        -------
+        int:
+            An integer representing the card,
+        """
+        return hash((self.rank, self.suit, self.hidden))
 
     def __eq__(self, other):
         try:
@@ -71,68 +106,197 @@ class Card:
         except AttributeError:
             return False
 
-    def __hash__(self):
-        return hash((self.rank, self.suit, self.hidden))
+    def __repr__(self):
+        if self.hidden:
+            return chr(int("0001F0A0", base=16))
+
+        elif not self.suit and not self.rank:
+            return chr(int("0001F0E0", base=16))
+
+        elif self.suit:
+            if self.rank:
+                string = f"{self.rank}{GLYPHS[self.suit]}"
+            else:
+                string = f"{GLYPHS[self.suit]}"
+
+            if self.suit in ('s', 'c'):
+                return color(string, 'darkgray')
+            elif self.suit in ('h', 'd'):
+                return color(string, 'red')
+
+    def allowable_children(self) -> list:
+        if self.location == 'tableau':
+            if self.rank:
+                if self.rank == 'A':
+                    # In the tableau, aces have no children
+                    return []
+                else:
+                    # In the tableau, children are of the opposite color and one rank lower
+                    child_rank  = RANKS[RANKS.index(self.rank) - 1]
+                    child_suits = get_opposite_suits(self.suit)
+            else:
+                # In the tableau, any king can be placed on an empty card
+                child_rank  = 'K'
+                child_suits = SUITS
+
+        elif self.location == 'foundation':
+            if self.rank:
+                if self.rank == 'K':
+                    # In the foundation, kings have no children
+                    return []
+                else:
+                    # In the foundation, children are of the same suit and one rank higher
+                    child_rank  = RANKS[RANKS.index(self.rank) + 1]
+                    child_suits = self.suit
+            else:
+                # In the foundation, only an ace of the same suit can be placed on a suit card
+                child_rank  = 'A'
+                child_suits = self.suit
+
+        else:
+            return []
+
+        cards = cards_product(child_rank, child_suits)
+        return cards
 
 
-class Tableau:
+class Deck:
 
-    def __init__(self, cards, kind='tableau'):
-        self.cards = cards
-        self.kind  = kind
+    def __init__(self, hidden=True, seed=0):
+        self.seed  = seed
+        self.cards = []
+        self.waste = []
+        self.order = None
+        self.times_rebuilt = 0
+        for s in SUITS:
+            for r in RANKS:
+                self.cards.append(Card(r, s, hidden=hidden))
+        self.refresh()
 
     def __repr__(self):
         return str(self.cards)
 
-    def get_candidates(self):
-        candidates = []
+    def shuffle(self):
+        random.seed(self.seed)
+        random.shuffle(self.cards)
+        if self.order is None:
+            self.order = self.cards[:]
 
-        if self.kind == 'tableau':
-            candidates = self._get_tableau_candidates()
-        elif self.kind == 'foundation':
-            candidates = self._get_foundation_candidates()
+    def deal(self, num=1):
+        if len(self.cards) == 0:
+            self.rebuild()
+        num = min(num, len(self.cards))
+        return [self.cards.pop(0) for n in range(num)]
 
-        return candidates
+    def rebuild(self):
+        self.cards.extend(self.waste)
+        self.waste = []
+        self.cards = sorted(self.cards, key=lambda x: self.order.index(x))
+        self.times_rebuilt += 1
+        self.refresh()
 
-    def _get_tableau_candidates(self):
-        try:
-            card = self.cards[-1]
-        except IndexError:
-            return [('Empty', Card(suit, 'K')) for suit in SUITS]
-
-        if card.color == 'RED':
-            child_suits = BLACK_SUITS
-        elif card.color == 'BLACK':
-            child_suits = RED_SUITS
-
-        if card.rank == 'A':
-            return []
+    def draw(self):
+        if len(self.cards) > 0:
+            self.waste[:0] = self.deal(3)
+            for c in self.waste:
+                c.hidden = False
         else:
-            rank_index = RANKS.index(card.rank)
-            child_rank = RANKS[rank_index - 1]
+            self.rebuild()
 
-        candidates = []
-        for suit in child_suits:
-            candidates.append((card, Card(suit, rank=child_rank)))
-        return candidates
+    def sources(self):
+        return [self.waste[0]]
 
-    def _get_foundation_candidates(self):
-        card = self.cards[-1]
+    def refresh(self):
+        for c in self.cards:
+            c.location = 'deck'
+        for c in self.waste:
+            c.location = 'deck'
+        set_container(self.waste, self)
 
-        if card.rank is None:
-            return [(card, Card(card.suit, rank='A'))]
-        elif card.rank == 'K':
-            return []
 
-        rank_index = RANKS.index(card.rank)
-        child_rank = RANKS[rank_index + 1]
+class Foundation:
 
-        return [(card, Card(card.suit, rank=child_rank))]
+    def __init__(self, suit, cards=()):
+        self.suit = suit
+        self.cards = [Card(suit=suit, location='foundation')]
+        self.cards.extend(cards)
+        self.refresh()
 
-    def find_card(self, card):
-        return self.cards.index(card)
+    def __repr__(self) -> str:
+        return str(self.cards)
 
-    def split(self, index):
+    def target(self) -> Card:
+        return self.cards[-1]
+
+    def sources(self) -> list:
+        return [self.cards[-1]]
+
+    def add(self, cards: list):
+        target = self.target()
+        children = target.allowable_children()
+
+        if cards[0] in children:
+            self.cards.extend(cards)
+            self.refresh()
+        else:
+            raise ValueError(f"{cards[0]} not in {target.allowable_children()}")
+
+    def pop(self):
+        return self.cards.pop()
+
+    def split(self, card):
+        return [self.pop()]
+
+    def refresh(self):
+        for c in self.cards:
+            c.hidden   = False
+            c.location = 'foundation'
+        set_container(self.cards, self)
+
+
+class Tableau:
+
+    def __init__(self, cards=()):
+        self.cards = [Card(location='tableau')]
+        self.cards.extend(cards)
+        self.refresh()
+
+    def __repr__(self) -> str:
+        return str(self.cards)
+
+    def target(self) -> Card:
+        return self.cards[-1]
+
+    def sources(self):
+        cards = []
+
+        # Returns empty card if nothing is on top of it
+        if len(self.cards) == 1:
+            return [self.cards[0]]
+
+        for c in reversed(self.cards[1:]):
+            if not c.hidden:
+                cards.append(c)
+            else:
+                break
+
+        return list(reversed(cards))
+
+    def add(self, cards: list):
+        target = self.target()
+        children = target.allowable_children()
+
+        if cards[0] in children:
+            self.cards.extend(cards)
+            self.refresh()
+        else:
+            raise ValueError(f"{cards[0]} not in {target.allowable_children()}")
+
+    def pop(self):
+        return self.cards.pop()
+
+    def split(self, card):
+        index = self.cards.index(card)
         if len(self.cards) > 1:
             split_cards = self.cards[index:]
             self.cards  = self.cards[:index]
@@ -142,63 +306,23 @@ class Tableau:
             return [self.cards.pop()]
 
     def refresh(self):
-        try:
-            top_card = self.cards[-1]
-            top_card.hidden = False
-        except IndexError:
-            pass
-
-
-class Deck:
-
-    def __init__(self, hidden=True, seed=0):
-        self.seed  = seed
-        self.cards = []
-        
-        for s in SUITS:
-            for r in RANKS:
-                self.cards.append(Card(s, r, hidden=hidden))
-
-    def __repr__(self):
-        return str(self.cards)
-
-    def shuffle(self):
-        random.seed(self.seed)
-        random.shuffle(self.cards)
-
-    def deal(self, num=1):
-        num = min(num, len(self.cards))
-        return [self.cards.pop(0) for n in range(num)]
+        for c in self.cards:
+            c.location = 'tableau'
+        if self.target().hidden is True:
+            self.target().hidden = False
+        set_container(self.cards, self)
 
 
 class Game:
 
     def __init__(self, seed=0):
-
-        # DECK ---------------------------------------------------------------------------------------------------------
         self.deck = Deck(seed=seed)
         self.deck.shuffle()
-
-        # TABLEAUS -----------------------------------------------------------------------------------------------------
+        self.foundations = [Foundation(suit) for suit in SUITS]
         self.tableaus = [Tableau(cards=self.deck.deal(i)) for i in range(1, 8)]
-        for t in self.tableaus:
-            t.cards[-1].hidden = False
+        for t in self.tableaus: t.cards[-1].hidden = False
 
-        # FOUNDATIONS --------------------------------------------------------------------------------------------------
-        self.foundations = [Tableau(cards=[Card(suit)], kind='foundation') for suit in SUITS]
-
-        # WASTE --------------------------------------------------------------------------------------------------------
-        self.waste = []
-
-    def __getitem__(self, key):
-        if key == 'tableau':
-            return self.tableaus
-        elif key == 'foundation':
-            return self.foundations
-        elif key == 'waste':
-            return self.waste
-
-    def render(self, deck=True, waste=True, foundations=True, tableaus=True, target_cards=True, source_cards=True, candidates=True, moves=True):
+    def render(self, deck=True, waste=True, foundations=True, tableaus=True, targets=True, sources=True, legal_moves=True):
         print()
 
         if deck:
@@ -207,8 +331,8 @@ class Game:
             print()
 
         if waste:
-            print('WASTE:', len(self.waste), 'cards')
-            print(self.waste)
+            print('WASTE:', len(self.deck.waste), 'cards')
+            print(self.deck.waste)
             print()
 
         if foundations:
@@ -221,183 +345,104 @@ class Game:
             pprint(self.tableaus)
             print()
 
-        if target_cards:
-            print('TARGET CARDS')
-            print(self.target_cards())
+        if targets:
+            print('TARGETS')
+            print(self.targets())
             print()
 
-        if source_cards:
-            print('SOURCE CARDS')
-            print(self.source_cards())
+        if sources:
+            print('SOURCES')
+            print(self.sources())
             print()
 
-        if candidates:
-            print('CANDIDATES')
-            print(self.get_candidates())
+        if legal_moves:
+            print('LEGAL MOVES')
+            print(self.legal_moves())
             print()
 
-        if moves:
-            print('MOVES')
-            print(self.get_moves())
-            print()
+    def targets(self):
+        target_cards = []
+        for attribute in (self.tableaus, self.foundations):
+            for pile in attribute:
+                target_cards.append(pile.target())
+        return target_cards
 
-    def draw(self):
-        if len(self.deck.cards) > 0:
-            self.waste[:0] = self.deck.deal(3)
-            for c in self.waste:
-                c.hidden = False
-        else:
-            self.rebuild()
-
-    def rebuild(self):
-        reversed_waste = list(reversed(self.waste))
-        groups = [list(reversed_waste[i:i+3]) for i in range(0, len(reversed_waste), 3)]
-        reversed_groups = [list(reversed(group)) for group in groups]
-        final_list = list(itertools.chain.from_iterable(reversed_groups))
-
-        self.deck.cards = final_list
-        self.waste = []
-
-    def target_cards(self):
-        foundation_cards = []
-        tableau_cards    = []
-        waste_cards      = []
-
-        for tableau in self.foundations:
-            try:
-                foundation_cards.append(tableau.cards[-1])
-            except IndexError:
-                foundation_cards.append('Empty')
-
-        for tableau in self.tableaus:
-            try:
-                tableau_cards.append(tableau.cards[-1])
-            except IndexError:
-                tableau_cards.append('Empty')
+    def sources(self):
+        source_cards = []
+        for attribute in (self.tableaus, self.foundations):
+            for pile in attribute:
+                source_cards.extend(pile.sources())
 
         try:
-            waste_cards.append(self.waste[0])
+            source_cards.extend(self.deck.sources())
         except IndexError:
             pass
 
-        return list(itertools.chain(foundation_cards, tableau_cards, waste_cards))
+        return source_cards
 
-    def source_cards(self):
-        foundation_cards = []
-        tableau_cards    = []
-        waste_cards      = []
-
-        for tableau in self.foundations:
-            try:
-                foundation_cards.append(tableau.cards[-1])
-            except IndexError:
-                foundation_cards.append('Empty')
-
-        for tableau in self.tableaus:
-            try:
-                tableau_cards.extend([card for card in tableau.cards if not card.hidden])
-            except IndexError:
-                tableau_cards.append('Empty')
-
-        try:
-            waste_cards.append(self.waste[0])
-        except IndexError:
-            pass
-
-        return list(itertools.chain(foundation_cards, tableau_cards, waste_cards))
-
-    def get_candidates(self):
-        candidates = []
-        for foundation in self.foundations:
-            candidates.extend(foundation.get_candidates())
-        for tableau in self.tableaus:
-            candidates.extend(tableau.get_candidates())
-
-        return candidates
-
-    def get_moves(self):
-        # Example actions: (3♣, 2♥), (3♣, 2♦), (8♠, 7♥)
-        target_cards  = self.target_cards() # [♠, A♥, 2♣, A♦, K♥, Q♦, 6♣, J♦, 3♣, 9♣, 9♥, 9♠]
-        source_cards  = self.source_cards() # [♠, A♥, 2♣, A♦, K♥, K♠, Q♦, 8♠, 7♦, 6♣, J♦, 8♥, 7♠, 6♦, 5♣, 4♥, 3♣, 9♣, 9♥, T♦]
-        candidate_moves = self.get_candidates() # [(♠, A♠), (A♥, 2♥), (2♣, 3♣), (A♦, 2♦), (K♥, Q♠), (K♥, Q♣), (Q♦, J♠), (Q♦, J♣), (6♣, 5♥), (6♣, 5♦), (J♦, T♠), (J♦, T♣), (3♣, 2♥), (3♣, 2♦), (9♣, 8♥), (9♣, 8♦), (9♥, 8♠), (9♥, 8♣)]
-
+    def legal_moves(self):
         moves = []
-        for a in candidate_moves:
-            if (a[0] in target_cards) and (a[1] in source_cards):
-                moves.append(a)
+        for target in self.targets():
+            children = target.allowable_children()
+            for source in self.sources():
+                if source in children:
+                    moves.append((target, source))
         return moves
 
-    def find_card(self, card):
-        for i, tableau in enumerate(self.tableaus):
-            try:
-                card_index = tableau.find_card(card)
-                return i, card_index, 'tableau'
-            except ValueError:
-                continue
-
-        for i, tableau in enumerate(self.foundations):
-            try:
-                card_index = tableau.find_card(card)
-                return i, card_index, 'foundation'
-            except ValueError:
-                continue
+    def move_cards(self, move):
+        self.get_reward(move)
+        target, source = move
 
         try:
-            top_card = self.waste[0]
-            if top_card == card:
-                return 0, 0, 'waste'
-        except IndexError:
-            pass
-
-    def move_cards(self, move):
-        # move is (target, source)
-        #print('SELECTED MOVE')
-        #print(f'{move[0]} ← {move[1]}')
-
-        # TARGET
-        if move[0] == 'Empty':
-            empty_tableaus = [t for t in self.tableaus if len(t.cards) == 0]
-            target = empty_tableaus[0]
-        else:
-            t = self.find_card(move[0])
-            if t[2] in ('foundation', 'tableau'):
-                target = self[t[2]][t[0]]
-            else:
-                target = 'Empty'
-
-        # SOURCE
-        s = self.find_card(move[1])
-        if s[2] == 'waste':
-            source = [self[s[2]].pop(0)]
-        else:
-            source = self[s[2]][s[0]]
-            source = source.split(s[1])
-
-        if target:
-            print()
-            print(f'{target} ← {source}')
-            t = self.find_card(move[0])
-            if t:
-                if t[2] == 'foundation':
-                    if len(source) > 1:
-                        raise ActionError
-            target.cards.extend(source)
-            print(target)
+            cards = source.container.split(source)
+            target.container.add(cards)
+        except AttributeError:
+            if self.deck.waste[0] == source:
+                cards = [self.deck.waste.pop(0)]
+                target.container.add(cards)
 
     def get_reward(self, move):
-        target_card = move[0]
-        source_card = move[1]
-        target = self.find_card(target_card); print('target', target)
-        source = self.find_card(source_card); print('source', source)
+        print('REWARD')
+        foundation_scores = {
+            'A': 100,
+            '2': 90,
+            '3': 80,
+            '4': 70,
+            '5': 60,
+            '6': 50,
+            '7': 40,
+            '8': 30,
+            '9': 20,
+            'T': 10,
+            'J': 10,
+            'Q': 10,
+            'K': 10
+        }
+        target, source = move
+        reward = 0
+
+        print(move)
+        print(target.container)
+        print(source.container)
+
+        # Moving cards to foundation (target card is in foundation)
+        if target.location == 'foundation':
+            reward += foundation_scores[source.rank]
+
+        # 20 points for playing card from waste (source card is in waste)
+        if source.location == 'deck':
+            reward += 20
+
+        # 20 points for uncovering hidden cards in tableau (source card is in tableau)
+        parent_card = get_parent_card(card=source)
 
 
+        # DEALING
+        # -20 points for going through deck more than 3? times (Deck)
 
-
-        # -20 points for going through deck more than 3? times
-        # 20 points for playing card from waste
-        # 20 points for uncovering hidden cards in tableau
-        # Moving cards to foundation = A:100, 2: 90, 3: 80, 4: 70, 5: 60, 6:50, 7:40, 8:30, 9:20, T:10, J:10, Q:10, K:10
+        # BONUS
         # Time bonus on ending the game
+
 
         pass
 
@@ -408,5 +453,16 @@ class Game:
 
 
 
+if __name__ == '__main__':
+    game = Game(seed=1)
 
-
+    for x in range(100):
+        print()
+        print(f'Round: {x}', '==' * 100)
+        game.render()
+        possible_moves = game.legal_moves()
+        try:
+            chosen_move = random.choice(possible_moves)
+            game.move_cards(chosen_move)
+        except IndexError:
+            game.deck.draw()
