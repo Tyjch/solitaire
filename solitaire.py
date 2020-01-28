@@ -1,7 +1,12 @@
 from colors import color
 from pprint import pprint
+from collections import OrderedDict
+from more_itertools import padded
+from utility import get_number
 import random
+import numpy as np
 
+EMPTY  = 0
 GLYPHS = {'s': '\u2660', 'h': '\u2665', 'd': '\u2666', 'c': '\u2663'}
 SUITS  = ('s', 'h', 'c', 'd')
 RANKS  = ('A', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K')
@@ -28,16 +33,20 @@ def set_container(items, container):
         i.container = container
 
 def get_parent_card(card):
-    print(card)
-    print(card.container)
-    print(card.container.cards)
-
+    # Really only used to tell if the parent is hidden and will be revealed upon a move
+    # This is used to increase score for revealing hidden cards
+    # Only works for cards in Tableaus
+    container = card.container
+    if isinstance(container, Tableau):
+        card_index = container.cards.index(card)
+        parent_card = container.cards[card_index - 1]
+        return parent_card
 
 
 
 class Card:
 
-    def __init__(self, rank: str = None, suit: str = None, location: str = 'deck', hidden: bool = False):
+    def __init__(self, rank: str = None, suit: str = None, location: str = 'deck', hidden: bool = False, container: object = None):
         """
         Parameters
         ----------
@@ -75,7 +84,7 @@ class Card:
             self.location = 'foundation'
 
         self.hidden = hidden
-        self.container = None
+        self.container = container
 
         '''
         # Ensuring that only normal cards can be hidden
@@ -159,6 +168,11 @@ class Card:
         cards = cards_product(child_rank, child_suits)
         return cards
 
+    def dump(self):
+        if self.hidden:
+            return 58
+        else:
+            return get_number(self.rank, self.suit)
 
 class Deck:
 
@@ -170,7 +184,7 @@ class Deck:
         self.times_rebuilt = 0
         for s in SUITS:
             for r in RANKS:
-                self.cards.append(Card(r, s, hidden=hidden))
+                self.cards.append(Card(r, s, hidden=True, container=self.cards))
         self.refresh()
 
     def __repr__(self):
@@ -191,7 +205,7 @@ class Deck:
     def rebuild(self):
         self.cards.extend(self.waste)
         self.waste = []
-        self.cards = sorted(self.cards, key=lambda x: self.order.index(x))
+        self.cards = sorted(self.cards, key=lambda y: self.order.index(y))
         self.times_rebuilt += 1
         self.refresh()
 
@@ -200,6 +214,7 @@ class Deck:
             self.waste[:0] = self.deal(3)
             for c in self.waste:
                 c.hidden = False
+                c.container = self.waste
         else:
             self.rebuild()
 
@@ -213,6 +228,18 @@ class Deck:
             c.location = 'deck'
         set_container(self.waste, self)
 
+    def find(self, rank, suit):
+        for c in self.cards:
+            if (c.rank == rank) and (c.suit == suit) and not c.hidden:
+                return c
+        for c in self.waste:
+            if (c.rank == rank) and (c.suit == suit):
+                return c
+
+    def dump(self):
+        deck  = np.array(list(padded([c.dump() for c in self.cards], EMPTY, 24)))
+        waste = np.array(list(padded([c.dump() for c in self.waste], EMPTY, 24)))
+        return deck, waste
 
 class Foundation:
 
@@ -253,6 +280,13 @@ class Foundation:
             c.location = 'foundation'
         set_container(self.cards, self)
 
+    def find(self, rank, suit):
+        for c in self.cards:
+            if (c.rank == rank) and (c.suit == suit):
+                return c
+
+    def dump(self):
+        return self.suit, self.target().dump()
 
 class Tableau:
 
@@ -312,17 +346,25 @@ class Tableau:
             self.target().hidden = False
         set_container(self.cards, self)
 
+    def find(self, rank, suit):
+        for c in self.cards:
+            if (c.rank == rank) and (c.suit == suit) and not c.hidden:
+                return c
+
+    def dump(self):
+        return np.array(list(padded([c.dump() for c in self.cards], EMPTY, 19)))
 
 class Game:
 
     def __init__(self, seed=0):
         self.deck = Deck(seed=seed)
         self.deck.shuffle()
+        self.score = 0
         self.foundations = [Foundation(suit) for suit in SUITS]
         self.tableaus = [Tableau(cards=self.deck.deal(i)) for i in range(1, 8)]
         for t in self.tableaus: t.cards[-1].hidden = False
 
-    def render(self, deck=True, waste=True, foundations=True, tableaus=True, targets=True, sources=True, legal_moves=True):
+    def render(self, deck=True, waste=True, foundations=True, tableaus=True, targets=False, sources=False, legal_moves=True):
         print()
 
         if deck:
@@ -390,8 +432,11 @@ class Game:
         return moves
 
     def move_cards(self, move):
-        self.get_reward(move)
+        reward = self.get_move_reward(move)
         target, source = move
+
+        print('ACTUAL MOVE')
+        print(move)
 
         try:
             cards = source.container.split(source)
@@ -401,8 +446,16 @@ class Game:
                 cards = [self.deck.waste.pop(0)]
                 target.container.add(cards)
 
-    def get_reward(self, move):
+        self.score += reward
+
+        print()
         print('REWARD')
+        print(reward)
+        print()
+        print('TOTAL SCORE')
+        print(self.score)
+
+    def get_move_reward(self, move):
         foundation_scores = {
             'A': 100,
             '2': 90,
@@ -421,30 +474,62 @@ class Game:
         target, source = move
         reward = 0
 
-        print(move)
-        print(target.container)
-        print(source.container)
-
         # Moving cards to foundation (target card is in foundation)
         if target.location == 'foundation':
             reward += foundation_scores[source.rank]
-
+        # Moving cards from foundation (takes away points you gained)
+        if source.location == 'foundation':
+            reward -= foundation_scores[source.rank]
         # 20 points for playing card from waste (source card is in waste)
         if source.location == 'deck':
             reward += 20
-
         # 20 points for uncovering hidden cards in tableau (source card is in tableau)
-        parent_card = get_parent_card(card=source)
+        if source.location == 'tableau':
+            parent_card = get_parent_card(card=source)
+            if parent_card.hidden:
+                reward += 20
 
+        return reward
 
-        # DEALING
+    def get_draw_reward(self):
         # -20 points for going through deck more than 3? times (Deck)
+        max_rebuilds = 3
+        if len(self.deck.cards) == 0:
+            if self.deck.times_rebuilt >= max_rebuilds:
+                return -20
 
-        # BONUS
-        # Time bonus on ending the game
+    def find_card(self, rank, suit):
+        for attribute in (self.foundations, self.tableaus, self.deck):
+            try:
+                for pile in attribute:
+                    found_card = pile.find(rank, suit)
+                    if found_card:
+                        return found_card
+            except TypeError:
+                found_card = attribute.find(rank, suit)
+
+    def state(self):
+        tableau_names = '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'
+
+        states = OrderedDict()
+        deck, waste = self.deck.dump()
+        foundations = OrderedDict([f.dump() for f in self.foundations])
+        tableaus    = OrderedDict([(name, t.dump()) for name, t in zip(tableau_names, self.tableaus)])
+
+        states['Deck'] = deck
+        states['Foundations'] = foundations
+        states['Tableaus'] = tableaus
+        states['Waste'] = waste
+
+        return states
 
 
-        pass
+
+
+
+
+
+
 
 
 
@@ -455,7 +540,17 @@ class Game:
 
 if __name__ == '__main__':
     game = Game(seed=1)
+    f_card = game.find_card('J', 'd')
 
+    game.state()
+
+
+    '''
+    print(f_card)
+    print(f_card.location)
+    print(f_card.container)
+    '''
+    '''
     for x in range(100):
         print()
         print(f'Round: {x}', '==' * 100)
@@ -466,3 +561,4 @@ if __name__ == '__main__':
             game.move_cards(chosen_move)
         except IndexError:
             game.deck.draw()
+    '''

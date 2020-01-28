@@ -1,7 +1,6 @@
 import pytest
 from hypothesis import given
 import hypothesis.strategies as st
-
 from solitaire import SUITS, RANKS, LOCATIONS, Card
 
 
@@ -25,7 +24,6 @@ class TestCard:
         assert card.rank is None
         assert card.suit == suit
         assert card.location == 'foundation'
-        assert card.hidden is False
 
     @given(location=st.sampled_from(LOCATIONS), hidden=st.booleans())
     def test_empty_card(self, location, hidden):
@@ -35,7 +33,6 @@ class TestCard:
         assert card.rank is None
         assert card.suit is None
         assert card.location == 'tableau'
-        assert card.hidden is False
 
     @given(rank=st.sampled_from(RANKS), suit=st.sampled_from(SUITS), location=st.sampled_from(LOCATIONS))
     def test_allowable_children_of_normal_card(self, rank, suit, location):
@@ -43,6 +40,7 @@ class TestCard:
         print(); print(card)
         print(card.location)
         children = card.allowable_children()
+        print(children)
 
         assert 0 <= len(children) <= 2
 
@@ -64,3 +62,5 @@ class TestCard:
         children = card.allowable_children()
         print(children)
         assert len(children) == 4
+
+

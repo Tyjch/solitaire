@@ -9,6 +9,9 @@ class TestDeck:
 
     def test_init_shown(self):
         deck = Deck(hidden=False)
+        for c in deck.cards:
+            c.hidden = False
+
         print(); print(deck)
 
     def test_shuffle(self):
