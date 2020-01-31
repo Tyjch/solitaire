@@ -1,21 +1,8 @@
 from bidict import bidict
+from itertools import permutations
+from pprint import pprint
 
-def get_number(rank='', suit=''):
-        if not rank: rank = ''
-        if not suit: suit = ''
-        return cards_mapping.inverse[(rank, suit)]
-
-def get_card(number):
-        return cards_mapping[number]
-
-action_mapping = bidict({
-        0: 'move',
-        1: 'draw',
-        2: 'undo',
-        3: 'end'
-    })
-cards_mapping  = bidict({
-        0 : None,
+cards_mapping = bidict({
         1 : ('A', 's'),
         2 : ('2', 's'),
         3 : ('3', 's'),
@@ -68,9 +55,38 @@ cards_mapping  = bidict({
         50: ('J', 'd'),
         51: ('Q', 'd'),
         52: ('K', 'd'),
-        53: ('',  's'),
-        54: ('',  'h'),
-        55: ('',  'c'),
-        56: ('',  'd'),
-        57: ('',  '')
+        53: (None, 's'),
+        54: (None, 'h'),
+        55: (None, 'c'),
+        56: (None, 'd'),
+        57: (None, None)
     })
+
+def get_number(rank='', suit=''):
+        if not rank: rank = None
+        if not suit: suit = None
+        return cards_mapping.inverse[(rank, suit)]
+
+def get_card(number):
+        return cards_mapping[number]
+
+def get_actions():
+    cards = cards_mapping.keys()
+    card_product = permutations(cards, 2)
+
+    mapping = bidict()
+
+    actions = ['draw', 'undo', 'end']
+    actions.extend(card_product)
+    for i, move in enumerate(actions):
+        mapping[i] = move
+    return mapping
+
+action_mapping = get_actions()
+
+
+
+if __name__ == '__main__':
+    r = get_actions()
+    print(len(r))
+    pprint(r)

@@ -3,8 +3,8 @@ from pprint import pprint
 from collections import OrderedDict
 from more_itertools import padded
 from utility import get_number
-import random
-import numpy as np
+import random, json
+
 
 EMPTY  = 0
 GLYPHS = {'s': '\u2660', 'h': '\u2665', 'd': '\u2666', 'c': '\u2663'}
@@ -41,6 +41,17 @@ def get_parent_card(card):
         card_index = container.cards.index(card)
         parent_card = container.cards[card_index - 1]
         return parent_card
+
+def print_observation(game_state: OrderedDict):
+    print()
+    print('OBSERVATION')
+    print('DECK:       ', game_state['Deck'])
+    print('WASTE:      ', game_state['Waste'])
+    print('FOUNDATIONS:', list(game_state['Foundations'].items()))
+    print('LEGAL MOVES:', game_state['Legal Moves'])
+    print('TABLEAUS:')
+    for t in game_state['Tableaus'].items():
+        print(t)
 
 
 
@@ -237,8 +248,8 @@ class Deck:
                 return c
 
     def dump(self):
-        deck  = np.array(list(padded([c.dump() for c in self.cards], EMPTY, 24)))
-        waste = np.array(list(padded([c.dump() for c in self.waste], EMPTY, 24)))
+        deck  = tuple(padded([c.dump() for c in self.cards], EMPTY, 24))
+        waste = tuple(padded([c.dump() for c in self.waste], EMPTY, 24))
         return deck, waste
 
 class Foundation:
@@ -347,16 +358,21 @@ class Tableau:
         set_container(self.cards, self)
 
     def find(self, rank, suit):
-        for c in self.cards:
-            if (c.rank == rank) and (c.suit == suit) and not c.hidden:
+        if rank and suit:
+            for c in self.cards:
+                if (c.rank == rank) and (c.suit == suit) and not c.hidden:
+                    return c
+        elif not rank and not suit:
+            c = self.cards[-1]
+            if not c.rank and not c.suit:
                 return c
 
     def dump(self):
-        return np.array(list(padded([c.dump() for c in self.cards], EMPTY, 19)))
+        return tuple(padded([c.dump() for c in self.cards], EMPTY, 19))
 
 class Game:
 
-    def __init__(self, seed=0):
+    def __init__(self, seed=None):
         self.deck = Deck(seed=seed)
         self.deck.shuffle()
         self.score = 0
@@ -432,11 +448,7 @@ class Game:
         return moves
 
     def move_cards(self, move):
-        reward = self.get_move_reward(move)
         target, source = move
-
-        print('ACTUAL MOVE')
-        print(move)
 
         try:
             cards = source.container.split(source)
@@ -446,33 +458,34 @@ class Game:
                 cards = [self.deck.waste.pop(0)]
                 target.container.add(cards)
 
+        '''
         self.score += reward
-
         print()
         print('REWARD')
         print(reward)
         print()
         print('TOTAL SCORE')
         print(self.score)
+        '''
 
     def get_move_reward(self, move):
         foundation_scores = {
-            'A': 100,
-            '2': 90,
-            '3': 80,
-            '4': 70,
-            '5': 60,
-            '6': 50,
-            '7': 40,
-            '8': 30,
-            '9': 20,
-            'T': 10,
-            'J': 10,
-            'Q': 10,
-            'K': 10
+            'A': 100.0,
+            '2': 90.0,
+            '3': 80.0,
+            '4': 70.0,
+            '5': 60.0,
+            '6': 50.0,
+            '7': 40.0,
+            '8': 30.0,
+            '9': 20.0,
+            'T': 10.0,
+            'J': 10.0,
+            'Q': 10.0,
+            'K': 10.0
         }
         target, source = move
-        reward = 0
+        reward = 0.0
 
         # Moving cards to foundation (target card is in foundation)
         if target.location == 'foundation':
@@ -482,12 +495,12 @@ class Game:
             reward -= foundation_scores[source.rank]
         # 20 points for playing card from waste (source card is in waste)
         if source.location == 'deck':
-            reward += 20
+            reward += 20.0
         # 20 points for uncovering hidden cards in tableau (source card is in tableau)
         if source.location == 'tableau':
             parent_card = get_parent_card(card=source)
             if parent_card.hidden:
-                reward += 20
+                reward += 20.0
 
         return reward
 
@@ -496,7 +509,11 @@ class Game:
         max_rebuilds = 3
         if len(self.deck.cards) == 0:
             if self.deck.times_rebuilt >= max_rebuilds:
-                return -20
+                return -20.0
+            else:
+                return 0.0
+        else:
+            return 0.0
 
     def find_card(self, rank, suit):
         for attribute in (self.foundations, self.tableaus, self.deck):
@@ -511,15 +528,17 @@ class Game:
     def state(self):
         tableau_names = '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'
 
-        states = OrderedDict()
+        states      = OrderedDict()
         deck, waste = self.deck.dump()
         foundations = OrderedDict([f.dump() for f in self.foundations])
         tableaus    = OrderedDict([(name, t.dump()) for name, t in zip(tableau_names, self.tableaus)])
+        legal_moves = tuple(padded([(k.dump(), v.dump()) for (k,v) in self.legal_moves()], (0, 0), 8))
 
-        states['Deck'] = deck
+        states['Deck']        = deck
         states['Foundations'] = foundations
-        states['Tableaus'] = tableaus
-        states['Waste'] = waste
+        states['Legal Moves'] = legal_moves
+        states['Tableaus']    = tableaus
+        states['Waste']       = waste
 
         return states
 
@@ -528,37 +547,21 @@ class Game:
 
 
 
-
-
-
-
-
-
-
-
-
-
 if __name__ == '__main__':
     game = Game(seed=1)
-    f_card = game.find_card('J', 'd')
 
-    game.state()
-
-
-    '''
-    print(f_card)
-    print(f_card.location)
-    print(f_card.container)
-    '''
-    '''
-    for x in range(100):
+    for x in range(50000):
         print()
         print(f'Round: {x}', '==' * 100)
-        game.render()
+        #game.render()
         possible_moves = game.legal_moves()
+        print('Number of Legal Moves:', len(possible_moves))
+        if len(possible_moves) > 5:
+            game.render()
         try:
             chosen_move = random.choice(possible_moves)
             game.move_cards(chosen_move)
         except IndexError:
             game.deck.draw()
-    '''
+
+        print_observation(game.state())
