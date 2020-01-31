@@ -1,7 +1,6 @@
-import gym, json
+import gym
 import gym.spaces as spaces
 from solitaire import Game, Card
-from pprint import pprint
 from utility import get_number, get_card, action_mapping, cards_mapping
 
 
